@@ -1,0 +1,12 @@
+import { beforeEach,afterEach,it,expect,vi } from 'vitest';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { database } from '@qms/database';
+import { FileService } from '../src/files/file.service';
+import { FileRepository } from '../src/files/file.repository';
+import type { TenantContext } from '@qms/types';
+vi.mock('@aws-sdk/s3-request-presigner',()=>({getSignedUrl:vi.fn()}));
+const ctx:TenantContext={organizationId:'a',siteId:'a1',userId:'u',membershipId:'m',sessionId:'s'};
+beforeEach(()=>{vi.stubEnv('DATABASE_URL','postgresql://unit:unit@localhost:5432/unit');vi.stubEnv('APP_ORIGIN','http://localhost:3000');vi.stubEnv('S3_REGION','us-east-1');vi.stubEnv('S3_BUCKET','unit');vi.stubEnv('S3_ACCESS_KEY_ID','unit');vi.stubEnv('S3_SECRET_ACCESS_KEY','unit');vi.stubEnv('NODE_ENV','test');});
+afterEach(()=>{vi.restoreAllMocks();vi.clearAllMocks();vi.unstubAllEnvs();});
+it('never issues download capabilities for foreign tenant files',async()=>{const query=vi.spyOn(database.fileObject,'findFirst').mockResolvedValue(null);const service=new FileService(new FileRepository());await expect(service.download(ctx,'foreign-file')).rejects.toThrow('File not found');expect(query).toHaveBeenCalledWith({where:{id:'foreign-file',organizationId:'a',siteId:'a1',deletedAt:null}});expect(getSignedUrl).not.toHaveBeenCalled();});
+it('rejects an unregistered upload target before signing or persisting',async()=>{const service=new FileService(new FileRepository());await expect(service.upload(ctx,{targetType:'UNREGISTERED',targetId:'x',originalFilename:'a.txt',contentType:'text/plain',size:1,checksum:'A'.repeat(43)+'='})).rejects.toThrow('Unregistered');expect(getSignedUrl).not.toHaveBeenCalled();});
