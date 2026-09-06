@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.next/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+packages/database/src/generated/

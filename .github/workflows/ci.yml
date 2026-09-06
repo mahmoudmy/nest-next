@@ -1,0 +1,59 @@
+name: Foundation CI
+on:
+  push:
+    branches: [main, feat/qms-platform-foundation]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: foundation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://qms:qms_local_only@localhost:5432/qms
+      APP_ORIGIN: http://localhost:3000
+      API_INTERNAL_URL: http://localhost:3001
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: qms-local
+      S3_ACCESS_KEY_ID: qms_local
+      S3_SECRET_ACCESS_KEY: qms_local_secret_only
+      SEED_ADMIN_EMAIL: admin@example.test
+      SEED_ADMIN_PASSWORD: CI-only-password-837462
+      QMS_INTEGRATION_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install
+        run: bash .github/scripts/check.sh install pnpm install --frozen-lockfile
+      - name: Generate database client
+        run: bash .github/scripts/check.sh generate bash .github/scripts/generate.sh
+      - name: Start local infrastructure
+        run: bash .github/scripts/check.sh infrastructure docker compose up -d --wait postgres minio
+      - name: Initialize private bucket
+        run: bash .github/scripts/check.sh bucket docker compose run --rm minio-init
+      - name: Migrate
+        run: bash .github/scripts/check.sh migrate pnpm db:deploy
+      - name: Seed and compile API dependencies
+        run: bash .github/scripts/check.sh seed pnpm db:seed
+      - name: Lint
+        run: bash .github/scripts/check.sh lint pnpm lint
+      - name: Typecheck
+        run: bash .github/scripts/check.sh typecheck pnpm typecheck
+      - name: Unit tests
+        run: bash .github/scripts/check.sh unit pnpm test
+      - name: Integration tests
+        run: bash .github/scripts/check.sh integration pnpm test:integration
+      - name: Production build
+        run: bash .github/scripts/check.sh build pnpm build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resolved-pnpm-lockfile
+          path: pnpm-lock.yaml

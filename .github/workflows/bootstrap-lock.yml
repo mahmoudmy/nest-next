@@ -1,0 +1,27 @@
+name: Resolve dependency lock (manual maintenance)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  lock:
+    if: github.ref == 'refs/heads/feat/qms-platform-foundation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/qms-platform-foundation
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+      - name: Commit only the resolved lockfile
+        run: |
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: refresh resolved pnpm lockfile'
+          git push origin HEAD:feat/qms-platform-foundation

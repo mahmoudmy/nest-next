@@ -1,0 +1,1 @@
+{"name":"@qms/auth","version":"0.0.0","private":true,"main":"dist/index.js","types":"dist/index.d.ts","scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc -p tsconfig.json --noEmit"},"dependencies":{"argon2":"^0.41.1","casbin":"^5.38.0","@qms/types":"workspace:*"},"devDependencies":{"@qms/tsconfig":"workspace:*"}}
