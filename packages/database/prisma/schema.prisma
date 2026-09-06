@@ -1,0 +1,291 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum TaskType {
+  ACTION
+  WORKFLOW
+}
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+enum ExecutionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+enum VersionStatus {
+  DRAFT
+  PUBLISHED
+}
+enum FileStatus {
+  PENDING
+  AVAILABLE
+  REJECTED
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique
+  name String
+  passwordHash String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  memberships Membership[]
+  sessions Session[]
+}
+model Organization {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  sites Site[]
+  memberships Membership[]
+  roles Role[]
+  workflows Workflow[]
+  tasks Task[]
+  files FileObject[]
+}
+model Site {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  organization Organization @relation(fields:[organizationId],references:[id])
+  name String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  memberships Membership[]
+  @@unique([id, organizationId])
+  @@unique([organizationId,name])
+}
+model Membership {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  organizationId String @db.Uuid
+  siteId String? @db.Uuid
+  active Boolean @default(true)
+  user User @relation(fields:[userId],references:[id])
+  organization Organization @relation(fields:[organizationId],references:[id])
+  site Site? @relation(fields:[siteId,organizationId],references:[id,organizationId])
+  roles MembershipRole[]
+  sessions Session[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([id,organizationId])
+  @@unique([userId,organizationId,siteId])
+  @@index([organizationId,siteId,active])
+}
+model Role {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  key String
+  name String
+  organization Organization @relation(fields:[organizationId],references:[id])
+  permissions RolePermission[]
+  memberships MembershipRole[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([organizationId,key])
+  @@unique([id,organizationId])
+}
+model Permission {
+  id String @id @default(uuid()) @db.Uuid
+  resource String
+  action String
+  roles RolePermission[]
+  @@unique([resource,action])
+}
+model RolePermission {
+  roleId String @db.Uuid
+  permissionId String @db.Uuid
+  role Role @relation(fields:[roleId],references:[id])
+  permission Permission @relation(fields:[permissionId],references:[id])
+  @@id([roleId,permissionId])
+}
+model MembershipRole {
+  membershipId String @db.Uuid
+  roleId String @db.Uuid
+  organizationId String @db.Uuid
+  membership Membership @relation(fields:[membershipId,organizationId],references:[id,organizationId])
+  role Role @relation(fields:[roleId,organizationId],references:[id,organizationId])
+  @@id([membershipId,roleId])
+}
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  tokenHash String @unique
+  userId String @db.Uuid
+  membershipId String @db.Uuid
+  user User @relation(fields:[userId],references:[id])
+  membership Membership @relation(fields:[membershipId],references:[id])
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId,expiresAt])
+}
+model Workflow {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  siteId String? @db.Uuid
+  organization Organization @relation(fields:[organizationId],references:[id])
+  name String
+  description String?
+  resourceType String
+  status String @default("ACTIVE")
+  currentVersion Int?
+  versions WorkflowVersion[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@unique([id,organizationId])
+  @@index([organizationId,siteId,resourceType])
+}
+model WorkflowVersion {
+  id String @id @default(uuid()) @db.Uuid
+  workflowId String @db.Uuid
+  workflow Workflow @relation(fields:[workflowId],references:[id])
+  number Int
+  status VersionStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  steps WorkflowStep[]
+  transitions WorkflowTransition[]
+  instances WorkflowInstance[]
+  @@unique([workflowId,number])
+  @@unique([id,workflowId])
+}
+model WorkflowStep {
+  id String @id @default(uuid()) @db.Uuid
+  workflowVersionId String @db.Uuid
+  version WorkflowVersion @relation(fields:[workflowVersionId],references:[id])
+  key String
+  name String
+  type String @default("USER_TASK")
+  configuration Json
+  position Int @default(0)
+  initial Boolean @default(false)
+  terminal Boolean @default(false)
+  outgoing WorkflowTransition[] @relation("from")
+  incoming WorkflowTransition[] @relation("to")
+  executions WorkflowInstanceStep[]
+  @@unique([workflowVersionId,key])
+  @@unique([id,workflowVersionId])
+}
+model WorkflowTransition {
+  id String @id @default(uuid()) @db.Uuid
+  workflowVersionId String @db.Uuid
+  version WorkflowVersion @relation(fields:[workflowVersionId],references:[id])
+  fromStepId String @db.Uuid
+  toStepId String @db.Uuid
+  fromStep WorkflowStep @relation("from",fields:[fromStepId,workflowVersionId],references:[id,workflowVersionId])
+  toStep WorkflowStep @relation("to",fields:[toStepId,workflowVersionId],references:[id,workflowVersionId])
+  outcome String @default("complete")
+  configuration Json @default("{}")
+  @@unique([workflowVersionId,fromStepId,outcome])
+}
+model WorkflowInstance {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  siteId String? @db.Uuid
+  workflowId String @db.Uuid
+  workflowVersionId String @db.Uuid
+  version WorkflowVersion @relation(fields:[workflowVersionId,workflowId],references:[id,workflowId])
+  targetType String
+  targetId String
+  status ExecutionStatus @default(PENDING)
+  startedById String @db.Uuid
+  startedAt DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
+  revision Int @default(0)
+  steps WorkflowInstanceStep[]
+  tasks Task[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([id,organizationId])
+  @@index([organizationId,siteId,targetType,targetId])
+}
+model WorkflowInstanceStep {
+  id String @id @default(uuid()) @db.Uuid
+  workflowInstanceId String @db.Uuid
+  workflowStepId String @db.Uuid
+  instance WorkflowInstance @relation(fields:[workflowInstanceId],references:[id])
+  step WorkflowStep @relation(fields:[workflowStepId],references:[id])
+  status ExecutionStatus @default(PENDING)
+  activatedAt DateTime?
+  completedAt DateTime?
+  completedById String? @db.Uuid
+  outcome String?
+  tasks Task[]
+  @@unique([workflowInstanceId,workflowStepId])
+  @@unique([id,workflowInstanceId])
+}
+model Task {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  siteId String? @db.Uuid
+  organization Organization @relation(fields:[organizationId],references:[id])
+  type TaskType
+  title String
+  description String?
+  targetType String
+  targetId String
+  assignedToUserId String @db.Uuid
+  workflowInstanceId String? @db.Uuid
+  workflowInstanceStepId String? @unique @db.Uuid
+  instance WorkflowInstance? @relation(fields:[workflowInstanceId,organizationId],references:[id,organizationId])
+  instanceStep WorkflowInstanceStep? @relation(fields:[workflowInstanceStepId,workflowInstanceId],references:[id,workflowInstanceId])
+  status TaskStatus @default(PENDING)
+  dueAt DateTime?
+  completedAt DateTime?
+  completedById String? @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([organizationId,siteId,assignedToUserId,status])
+  @@index([organizationId,targetType,targetId])
+}
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String? @db.Uuid
+  siteId String? @db.Uuid
+  actorId String? @db.Uuid
+  action String
+  resourceType String
+  resourceId String?
+  result String
+  metadata Json @default("{}")
+  createdAt DateTime @default(now())
+  @@index([organizationId,siteId,createdAt])
+  @@index([resourceType,resourceId])
+}
+model FileObject {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  siteId String? @db.Uuid
+  organization Organization @relation(fields:[organizationId],references:[id])
+  objectKey String @unique
+  originalFilename String
+  contentType String
+  size Int
+  checksum String
+  uploadedBy String @db.Uuid
+  targetType String
+  targetId String
+  status FileStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([organizationId,siteId,targetType,targetId])
+}
