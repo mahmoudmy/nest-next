@@ -1,0 +1,6 @@
+import { it,expect } from 'vitest';
+import { taskSchema,uploadSchema,loginSchema,stepSchema } from '../src/index';
+const user='33333333-3333-4333-8333-333333333333';
+it('rejects browser tenant overrides, role injection and arbitrary task types',()=>{const task={title:'test',targetType:'INFRA_TEST',targetId:'resource',assignedToUserId:user};expect(taskSchema.safeParse(task).success).toBe(true);for(const extra of [{organizationId:user},{siteId:user},{type:'WORKFLOW'},{role:'admin'},{workflowInstanceId:user}])expect(taskSchema.safeParse({...task,...extra}).success).toBe(false);});
+it('limits uploads and does not accept client object keys',()=>{const file={targetType:'INFRA_TEST',targetId:'r',originalFilename:'sample.txt',contentType:'text/plain',size:12,checksum:'A'.repeat(43)+'='};expect(uploadSchema.safeParse(file).success).toBe(true);for(const extra of [{objectKey:'someone-else/file'},{size:104857601},{originalFilename:'../secret'},{contentType:'text/html'}])expect(uploadSchema.safeParse({...file,...extra}).success).toBe(false);});
+it('rejects unsupported assignment strategies and excessive credentials',()=>{expect(stepSchema.safeParse({key:'test',name:'test',configuration:{assignment:{strategy:'ROLE',userId:user}}}).success).toBe(false);expect(loginSchema.safeParse({email:'x@example.test',password:'x'.repeat(257)}).success).toBe(false);});
