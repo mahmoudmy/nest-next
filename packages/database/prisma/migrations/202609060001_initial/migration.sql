@@ -1,0 +1,81 @@
+CREATE TYPE "TaskType" AS ENUM ('ACTION','WORKFLOW');
+CREATE TYPE "TaskStatus" AS ENUM ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED');
+CREATE TYPE "ExecutionStatus" AS ENUM ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED','REJECTED');
+CREATE TYPE "VersionStatus" AS ENUM ('DRAFT','PUBLISHED');
+CREATE TYPE "FileStatus" AS ENUM ('PENDING','AVAILABLE','REJECTED');
+CREATE TABLE "User" ("id" UUID PRIMARY KEY,"email" TEXT NOT NULL,"name" TEXT NOT NULL,"passwordHash" TEXT NOT NULL,"active" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"deletedAt" TIMESTAMP(3));
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+CREATE TABLE "Organization" ("id" UUID PRIMARY KEY,"name" TEXT NOT NULL,"active" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"deletedAt" TIMESTAMP(3));
+CREATE TABLE "Site" ("id" UUID PRIMARY KEY,"organizationId" UUID NOT NULL REFERENCES "Organization"("id"),"name" TEXT NOT NULL,"active" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"deletedAt" TIMESTAMP(3));
+CREATE UNIQUE INDEX "Site_id_organizationId_key" ON "Site"("id","organizationId");
+CREATE UNIQUE INDEX "Site_organizationId_name_key" ON "Site"("organizationId","name");
+CREATE TABLE "Membership" ("id" UUID PRIMARY KEY,"userId" UUID NOT NULL REFERENCES "User"("id"),"organizationId" UUID NOT NULL REFERENCES "Organization"("id"),"siteId" UUID,"active" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"FOREIGN KEY" TEXT);
+ALTER TABLE "Membership" DROP COLUMN "FOREIGN KEY";
+ALTER TABLE "Membership" ADD CONSTRAINT "Membership_siteId_organizationId_fkey" FOREIGN KEY ("siteId","organizationId") REFERENCES "Site"("id","organizationId");
+CREATE UNIQUE INDEX "Membership_id_organizationId_key" ON "Membership"("id","organizationId");
+CREATE UNIQUE INDEX "Membership_userId_organizationId_siteId_key" ON "Membership"("userId","organizationId","siteId");
+CREATE UNIQUE INDEX "membership_organization_scope_unique" ON "Membership"("userId","organizationId") WHERE "siteId" IS NULL;
+CREATE INDEX "Membership_organizationId_siteId_active_idx" ON "Membership"("organizationId","siteId","active");
+CREATE TABLE "Role" ("id" UUID PRIMARY KEY,"organizationId" UUID NOT NULL REFERENCES "Organization"("id"),"key" TEXT NOT NULL,"name" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL);
+CREATE UNIQUE INDEX "Role_organizationId_key_key" ON "Role"("organizationId","key");
+CREATE UNIQUE INDEX "Role_id_organizationId_key" ON "Role"("id","organizationId");
+CREATE TABLE "Permission" ("id" UUID PRIMARY KEY,"resource" TEXT NOT NULL,"action" TEXT NOT NULL);
+CREATE UNIQUE INDEX "Permission_resource_action_key" ON "Permission"("resource","action");
+CREATE TABLE "RolePermission" ("roleId" UUID NOT NULL REFERENCES "Role"("id"),"permissionId" UUID NOT NULL REFERENCES "Permission"("id"),PRIMARY KEY ("roleId","permissionId"));
+CREATE TABLE "MembershipRole" ("membershipId" UUID NOT NULL,"roleId" UUID NOT NULL,"organizationId" UUID NOT NULL,PRIMARY KEY ("membershipId","roleId"),FOREIGN KEY ("membershipId","organizationId") REFERENCES "Membership"("id","organizationId"),FOREIGN KEY ("roleId","organizationId") REFERENCES "Role"("id","organizationId"));
+CREATE TABLE "Session" ("id" UUID PRIMARY KEY,"tokenHash" TEXT NOT NULL,"userId" UUID NOT NULL REFERENCES "User"("id"),"membershipId" UUID NOT NULL REFERENCES "Membership"("id"),"expiresAt" TIMESTAMP(3) NOT NULL,"revokedAt" TIMESTAMP(3),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX "Session_tokenHash_key" ON "Session"("tokenHash");
+CREATE INDEX "Session_userId_expiresAt_idx" ON "Session"("userId","expiresAt");
+CREATE TABLE "Workflow" ("id" UUID PRIMARY KEY,"organizationId" UUID NOT NULL REFERENCES "Organization"("id"),"siteId" UUID,"name" TEXT NOT NULL,"description" TEXT,"resourceType" TEXT NOT NULL,"status" TEXT NOT NULL DEFAULT 'ACTIVE',"currentVersion" INTEGER,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"deletedAt" TIMESTAMP(3),FOREIGN KEY ("siteId","organizationId") REFERENCES "Site"("id","organizationId"));
+CREATE UNIQUE INDEX "Workflow_id_organizationId_key" ON "Workflow"("id","organizationId");
+CREATE INDEX "Workflow_organizationId_siteId_resourceType_idx" ON "Workflow"("organizationId","siteId","resourceType");
+CREATE TABLE "WorkflowVersion" ("id" UUID PRIMARY KEY,"workflowId" UUID NOT NULL REFERENCES "Workflow"("id"),"number" INTEGER NOT NULL,"status" "VersionStatus" NOT NULL DEFAULT 'DRAFT',"publishedAt" TIMESTAMP(3),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX "WorkflowVersion_workflowId_number_key" ON "WorkflowVersion"("workflowId","number");
+CREATE UNIQUE INDEX "WorkflowVersion_id_workflowId_key" ON "WorkflowVersion"("id","workflowId");
+CREATE TABLE "WorkflowStep" ("id" UUID PRIMARY KEY,"workflowVersionId" UUID NOT NULL REFERENCES "WorkflowVersion"("id"),"key" TEXT NOT NULL,"name" TEXT NOT NULL,"type" TEXT NOT NULL DEFAULT 'USER_TASK',"configuration" JSONB NOT NULL,"position" INTEGER NOT NULL DEFAULT 0,"initial" BOOLEAN NOT NULL DEFAULT false,"terminal" BOOLEAN NOT NULL DEFAULT false);
+CREATE UNIQUE INDEX "WorkflowStep_workflowVersionId_key_key" ON "WorkflowStep"("workflowVersionId","key");
+CREATE UNIQUE INDEX "WorkflowStep_id_workflowVersionId_key" ON "WorkflowStep"("id","workflowVersionId");
+CREATE TABLE "WorkflowTransition" ("id" UUID PRIMARY KEY,"workflowVersionId" UUID NOT NULL REFERENCES "WorkflowVersion"("id"),"fromStepId" UUID NOT NULL,"toStepId" UUID NOT NULL,"outcome" TEXT NOT NULL DEFAULT 'complete',"configuration" JSONB NOT NULL DEFAULT '{}',FOREIGN KEY ("fromStepId","workflowVersionId") REFERENCES "WorkflowStep"("id","workflowVersionId"),FOREIGN KEY ("toStepId","workflowVersionId") REFERENCES "WorkflowStep"("id","workflowVersionId"));
+CREATE UNIQUE INDEX "WorkflowTransition_workflowVersionId_fromStepId_outcome_key" ON "WorkflowTransition"("workflowVersionId","fromStepId","outcome");
+CREATE TABLE "WorkflowInstance" ("id" UUID PRIMARY KEY,"organizationId" UUID NOT NULL,"siteId" UUID,"workflowId" UUID NOT NULL,"workflowVersionId" UUID NOT NULL,"targetType" TEXT NOT NULL,"targetId" TEXT NOT NULL,"status" "ExecutionStatus" NOT NULL DEFAULT 'PENDING',"startedById" UUID NOT NULL REFERENCES "User"("id"),"startedAt" TIMESTAMP(3),"completedAt" TIMESTAMP(3),"cancelledAt" TIMESTAMP(3),"revision" INTEGER NOT NULL DEFAULT 0,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,FOREIGN KEY ("workflowVersionId","workflowId") REFERENCES "WorkflowVersion"("id","workflowId"),FOREIGN KEY ("workflowId","organizationId") REFERENCES "Workflow"("id","organizationId"),FOREIGN KEY ("siteId","organizationId") REFERENCES "Site"("id","organizationId"));
+CREATE UNIQUE INDEX "WorkflowInstance_id_organizationId_key" ON "WorkflowInstance"("id","organizationId");
+CREATE INDEX "WorkflowInstance_organizationId_siteId_targetType_targetId_idx" ON "WorkflowInstance"("organizationId","siteId","targetType","targetId");
+CREATE TABLE "WorkflowInstanceStep" ("id" UUID PRIMARY KEY,"workflowInstanceId" UUID NOT NULL REFERENCES "WorkflowInstance"("id"),"workflowStepId" UUID NOT NULL REFERENCES "WorkflowStep"("id"),"status" "ExecutionStatus" NOT NULL DEFAULT 'PENDING',"activatedAt" TIMESTAMP(3),"completedAt" TIMESTAMP(3),"completedById" UUID REFERENCES "User"("id"),"outcome" TEXT);
+CREATE UNIQUE INDEX "WorkflowInstanceStep_workflowInstanceId_workflowStepId_key" ON "WorkflowInstanceStep"("workflowInstanceId","workflowStepId");
+CREATE UNIQUE INDEX "WorkflowInstanceStep_id_workflowInstanceId_key" ON "WorkflowInstanceStep"("id","workflowInstanceId");
+CREATE TABLE "Task" ("id" UUID PRIMARY KEY,"organizationId" UUID NOT NULL REFERENCES "Organization"("id"),"siteId" UUID,"type" "TaskType" NOT NULL,"title" TEXT NOT NULL,"description" TEXT,"targetType" TEXT NOT NULL,"targetId" TEXT NOT NULL,"assignedToUserId" UUID NOT NULL REFERENCES "User"("id"),"workflowInstanceId" UUID,"workflowInstanceStepId" UUID,"status" "TaskStatus" NOT NULL DEFAULT 'PENDING',"dueAt" TIMESTAMP(3),"completedAt" TIMESTAMP(3),"completedById" UUID REFERENCES "User"("id"),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"deletedAt" TIMESTAMP(3),FOREIGN KEY ("siteId","organizationId") REFERENCES "Site"("id","organizationId"),FOREIGN KEY ("workflowInstanceId","organizationId") REFERENCES "WorkflowInstance"("id","organizationId"),FOREIGN KEY ("workflowInstanceStepId","workflowInstanceId") REFERENCES "WorkflowInstanceStep"("id","workflowInstanceId"),CONSTRAINT "task_type_links" CHECK (("type" = 'ACTION' AND "workflowInstanceId" IS NULL AND "workflowInstanceStepId" IS NULL) OR ("type" = 'WORKFLOW' AND "workflowInstanceId" IS NOT NULL AND "workflowInstanceStepId" IS NOT NULL)),CONSTRAINT "task_completion" CHECK (("status" = 'COMPLETED') = ("completedAt" IS NOT NULL AND "completedById" IS NOT NULL)));
+CREATE UNIQUE INDEX "Task_workflowInstanceStepId_key" ON "Task"("workflowInstanceStepId");
+CREATE INDEX "Task_organizationId_siteId_assignedToUserId_status_idx" ON "Task"("organizationId","siteId","assignedToUserId","status");
+CREATE INDEX "Task_organizationId_targetType_targetId_idx" ON "Task"("organizationId","targetType","targetId");
+CREATE TABLE "AuditLog" ("id" UUID PRIMARY KEY,"organizationId" UUID REFERENCES "Organization"("id"),"siteId" UUID,"actorId" UUID REFERENCES "User"("id"),"action" TEXT NOT NULL,"resourceType" TEXT NOT NULL,"resourceId" TEXT,"result" TEXT NOT NULL,"metadata" JSONB NOT NULL DEFAULT '{}',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY ("siteId","organizationId") REFERENCES "Site"("id","organizationId"));
+CREATE INDEX "AuditLog_organizationId_siteId_createdAt_idx" ON "AuditLog"("organizationId","siteId","createdAt");
+CREATE INDEX "AuditLog_resourceType_resourceId_idx" ON "AuditLog"("resourceType","resourceId");
+CREATE TABLE "FileObject" ("id" UUID PRIMARY KEY,"organizationId" UUID NOT NULL REFERENCES "Organization"("id"),"siteId" UUID,"objectKey" TEXT NOT NULL,"originalFilename" TEXT NOT NULL,"contentType" TEXT NOT NULL,"size" INTEGER NOT NULL,"checksum" TEXT NOT NULL,"uploadedBy" UUID NOT NULL REFERENCES "User"("id"),"targetType" TEXT NOT NULL,"targetId" TEXT NOT NULL,"status" "FileStatus" NOT NULL DEFAULT 'PENDING',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"deletedAt" TIMESTAMP(3),FOREIGN KEY ("siteId","organizationId") REFERENCES "Site"("id","organizationId"),CHECK ("size" > 0 AND "size" <= 104857600));
+CREATE UNIQUE INDEX "FileObject_objectKey_key" ON "FileObject"("objectKey");
+CREATE INDEX "FileObject_organizationId_siteId_targetType_targetId_idx" ON "FileObject"("organizationId","siteId","targetType","targetId");
+-- Lock the parent version for all definition mutations so publication cannot race an edit.
+CREATE FUNCTION protect_workflow_definition() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE version_id UUID; version_status "VersionStatus";
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW."workflowVersionId" <> OLD."workflowVersionId" THEN RAISE EXCEPTION 'Cannot move a definition between versions'; END IF;
+  IF TG_OP = 'DELETE' THEN version_id := OLD."workflowVersionId"; ELSE version_id := NEW."workflowVersionId"; END IF;
+  SELECT status INTO version_status FROM "WorkflowVersion" WHERE id = version_id FOR UPDATE;
+  IF version_status = 'PUBLISHED' THEN RAISE EXCEPTION 'Published workflow versions are immutable'; END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END $$;
+CREATE TRIGGER immutable_step BEFORE INSERT OR UPDATE OR DELETE ON "WorkflowStep" FOR EACH ROW EXECUTE FUNCTION protect_workflow_definition();
+CREATE TRIGGER immutable_transition BEFORE INSERT OR UPDATE OR DELETE ON "WorkflowTransition" FOR EACH ROW EXECUTE FUNCTION protect_workflow_definition();
+CREATE FUNCTION protect_published_version() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.status = 'PUBLISHED' THEN RAISE EXCEPTION 'Published workflow versions are immutable'; END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END $$;
+CREATE TRIGGER immutable_version BEFORE UPDATE OR DELETE ON "WorkflowVersion" FOR EACH ROW EXECUTE FUNCTION protect_published_version();
+CREATE FUNCTION protect_execution_version() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."workflowVersionId" <> OLD."workflowVersionId" OR NEW."workflowId" <> OLD."workflowId" OR NEW."organizationId" <> OLD."organizationId" OR NEW."targetType" <> OLD."targetType" OR NEW."targetId" <> OLD."targetId" OR NEW."siteId" IS DISTINCT FROM OLD."siteId" THEN RAISE EXCEPTION 'Execution binding is immutable'; END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER immutable_execution_binding BEFORE UPDATE ON "WorkflowInstance" FOR EACH ROW EXECUTE FUNCTION protect_execution_version();
+CREATE FUNCTION append_only_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Audit records are append only'; END $$;
+CREATE TRIGGER immutable_audit BEFORE UPDATE OR DELETE ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION append_only_audit();
