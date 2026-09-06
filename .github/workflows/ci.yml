@@ -29,6 +29,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+          package-manager-cache: false
       - name: Install
         run: bash .github/scripts/check.sh install pnpm install --no-frozen-lockfile
       - name: Generate database client
