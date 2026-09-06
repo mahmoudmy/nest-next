@@ -1,5 +1,5 @@
 {
-  "name":"qms","private":true,"packageManager":"pnpm@10.11.0","engines":{"node":">=22 <23"},
+  "name":"qms","private":true,"packageManager":"pnpm@10.11.0","engines":{"node":">=22 <25"},
   "scripts":{
     "dev":"pnpm db:generate && pnpm db:deploy && turbo dev",
     "build":"pnpm db:generate && turbo build","lint":"eslint .","typecheck":"pnpm db:generate && turbo typecheck",
@@ -8,5 +8,5 @@
     "db:reset":"prisma migrate reset --skip-seed && pnpm db:seed","prisma":"prisma"
   },
   "prisma":{"schema":"packages/database/prisma/schema.prisma","seed":"pnpm db:seed"},
-  "devDependencies":{"@prisma/client":"6.19.0","@qms/eslint-config":"workspace:*","@types/node":"^22.15.0","eslint":"^9.26.0","prisma":"6.19.0","tsx":"^4.19.4","turbo":"^2.5.3","typescript":"^5.8.3","vitest":"^3.2.4","dotenv":"^16.5.0"}
+  "devDependencies":{"@prisma/client":"6.19.0","@qms/eslint-config":"workspace:*","@types/node":"^22.15.0","dotenv":"^16.5.0","eslint":"^9.26.0","prisma":"6.19.0","tsx":"^4.19.4","turbo":"^2.5.3","typescript":"^5.8.3","vitest":"^3.2.4"}
 }
