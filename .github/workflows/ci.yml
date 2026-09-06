@@ -22,10 +22,11 @@ jobs:
       S3_SECRET_ACCESS_KEY: qms_local_secret_only
       SEED_ADMIN_EMAIL: admin@example.test
       SEED_ADMIN_PASSWORD: CI-only-password-837462
+      QMS_INTEGRATION_TESTS: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - name: Install

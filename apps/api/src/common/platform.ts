@@ -5,13 +5,16 @@ import { DomainError,scope,type TenantContext } from '@qms/types';
 import type { CreateWorkflowInput,StepInput,TransitionInput,StartWorkflowInput,TaskInput } from '@qms/contracts';
 import { TaskRepository } from '../tasks/task.repository';
 import { TaskService } from '../tasks/task.service';
-/** Composition root: modules register adapters here, not inside the workflow engine. */
+/** Composition root: future modules register adapters here, not inside the engine. */
 export const resourceRegistry=new ResourceRegistry();
 resourceRegistry.register('PLATFORM_SANDBOX',{async resolve(tx,ctx,id) {
-  const organization=await tx.organization.findFirst({where:{id,active:true,deletedAt:null}});
-  if (!organization || id!==ctx.organizationId) throw new DomainError('NOT_FOUND','Resource not found');
-  // This infrastructure-only target belongs to the validated current membership context.
-  return {organizationId:organization.id,siteId:ctx.siteId};
+  if(id===ctx.organizationId){
+    const organization=await tx.organization.findFirst({where:{id,active:true,deletedAt:null}});
+    if(organization)return {organizationId:organization.id,siteId:null};
+  }
+  const site=await tx.site.findFirst({where:{id,organizationId:ctx.organizationId,active:true,deletedAt:null,organization:{active:true,deletedAt:null}}});
+  if(!site)throw new DomainError('NOT_FOUND','Resource not found');
+  return {organizationId:site.organizationId,siteId:site.id};
 }});
 export const taskRepository=new TaskRepository();
 export const taskEngine=new TaskService(taskRepository,resourceRegistry);
