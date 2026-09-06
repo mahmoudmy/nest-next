@@ -1,0 +1,13 @@
+import { createZodDto } from 'nestjs-zod';
+import { loginSchema,contextSchema,activationSchema,workflowSchema,stepSchema,transitionSchema,startWorkflowSchema,taskSchema,assignTaskSchema,completeTaskSchema,uploadSchema } from '@qms/contracts';
+export class LoginDto extends createZodDto(loginSchema) {}
+export class ContextDto extends createZodDto(contextSchema) {}
+export class ActivationDto extends createZodDto(activationSchema) {}
+export class WorkflowDto extends createZodDto(workflowSchema) {}
+export class StepDto extends createZodDto(stepSchema) {}
+export class TransitionDto extends createZodDto(transitionSchema) {}
+export class StartWorkflowDto extends createZodDto(startWorkflowSchema) {}
+export class TaskDto extends createZodDto(taskSchema) {}
+export class AssignTaskDto extends createZodDto(assignTaskSchema) {}
+export class CompleteTaskDto extends createZodDto(completeTaskSchema) {}
+export class UploadDto extends createZodDto(uploadSchema) {}
