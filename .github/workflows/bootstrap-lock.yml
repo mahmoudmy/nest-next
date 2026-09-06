@@ -1,13 +1,11 @@
-name: Resolve initial dependency lock
+name: Resolve dependency lock (manual maintenance)
 on:
-  push:
-    branches: [feat/qms-platform-foundation]
-    paths: [.github/workflows/bootstrap-lock.yml]
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
   lock:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/qms-platform-foundation'
+    if: github.ref == 'refs/heads/feat/qms-platform-foundation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -18,13 +16,12 @@ jobs:
         with:
           node-version: '22'
           package-manager-cache: false
-      - name: Resolve metadata without executing package scripts
-        run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
-      - name: Commit only the resolved lockfile to the approved feature branch
+      - run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+      - name: Commit only the resolved lockfile
         run: |
           git add pnpm-lock.yaml
           if git diff --cached --quiet; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'chore: commit package-manager-resolved pnpm lockfile'
+          git commit -m 'chore: refresh resolved pnpm lockfile'
           git push origin HEAD:feat/qms-platform-foundation

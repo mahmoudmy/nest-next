@@ -31,9 +31,9 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - name: Install
-        run: bash .github/scripts/check.sh install pnpm install --no-frozen-lockfile
+        run: bash .github/scripts/check.sh install pnpm install --frozen-lockfile
       - name: Generate database client
-        run: bash .github/scripts/check.sh generate pnpm db:generate
+        run: bash .github/scripts/check.sh generate bash .github/scripts/generate.sh
       - name: Start local infrastructure
         run: bash .github/scripts/check.sh infrastructure docker compose up -d --wait postgres minio
       - name: Initialize private bucket
