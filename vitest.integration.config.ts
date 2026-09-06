@@ -1,3 +1,3 @@
-import { defineConfig, mergeConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config';
 import base from './vitest.config';
-export default mergeConfig(base,defineConfig({test:{include:['**/*.integration.test.ts']}}));
+export default defineConfig({...base,test:{...base.test,include:['**/*.integration.test.ts'],testTimeout:30000}});

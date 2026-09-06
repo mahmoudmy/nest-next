@@ -5,20 +5,14 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: foundation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16.9-alpine
-        env:
-          POSTGRES_USER: qms
-          POSTGRES_PASSWORD: qms_ci_only
-          POSTGRES_DB: qms_test
-        ports: ['5432:5432']
-        options: --health-cmd 'pg_isready -U qms -d qms_test' --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://qms:qms_ci_only@localhost:5432/qms_test
+      DATABASE_URL: postgresql://qms:qms_local_only@localhost:5432/qms
       APP_ORIGIN: http://localhost:3000
       API_INTERNAL_URL: http://localhost:3001
       S3_ENDPOINT: http://localhost:9000
@@ -34,17 +28,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pnpm install --no-frozen-lockfile
-      - run: pnpm db:generate
-      - run: pnpm db:deploy
-      - run: pnpm db:seed
-      - run: docker compose up -d minio minio-init
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm exec vitest run --config vitest.integration.config.ts
-      - run: pnpm build
+      - name: Install
+        run: bash .github/scripts/check.sh install pnpm install --no-frozen-lockfile
+      - name: Generate database client
+        run: bash .github/scripts/check.sh generate pnpm db:generate
+      - name: Start local infrastructure
+        run: bash .github/scripts/check.sh infrastructure docker compose up -d --wait postgres minio
+      - name: Initialize private bucket
+        run: bash .github/scripts/check.sh bucket docker compose run --rm minio-init
+      - name: Migrate
+        run: bash .github/scripts/check.sh migrate pnpm db:deploy
+      - name: Seed and compile API dependencies
+        run: bash .github/scripts/check.sh seed pnpm db:seed
+      - name: Lint
+        run: bash .github/scripts/check.sh lint pnpm lint
+      - name: Typecheck
+        run: bash .github/scripts/check.sh typecheck pnpm typecheck
+      - name: Unit tests
+        run: bash .github/scripts/check.sh unit pnpm test
+      - name: Integration tests
+        run: bash .github/scripts/check.sh integration pnpm test:integration
+      - name: Production build
+        run: bash .github/scripts/check.sh build pnpm build
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: resolved-pnpm-lockfile
           path: pnpm-lock.yaml
